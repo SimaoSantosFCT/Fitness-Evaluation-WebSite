@@ -15,6 +15,4 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=backend-build /backend/target/fitness-api.jar app.jar
-COPY start.sh start.sh
-RUN chmod +x start.sh
-ENTRYPOINT ["sh", "start.sh"]
+ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
