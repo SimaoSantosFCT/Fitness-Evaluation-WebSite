@@ -24,7 +24,8 @@ magda-render/
 
 ## Desenvolvimento local (Windows)
 
-powershell
+Powershell CMD
+
 # Terminal 1
 cd magda-render\backend
 mvn spring-boot:run
@@ -34,6 +35,7 @@ cd magda-render\frontend
 npm install
 npm run dev
 
+...
 http://localhost:5173
 
 ---
