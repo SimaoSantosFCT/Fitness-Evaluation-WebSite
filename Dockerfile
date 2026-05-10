@@ -10,10 +10,10 @@ RUN npm run build
 FROM maven:3.9-eclipse-temurin-17 AS backend-build
 WORKDIR /backend
 COPY backend/pom.xml .
-RUN mvn dependency:go-offline -q
 COPY backend/src ./src
 COPY --from=frontend-build /frontend/dist ./src/main/resources/static
-RUN mvn clean package -DskipTests -q
+RUN mvn clean package -DskipTests
+# Resultado em /backend/target/fitness-api.jar
 
 # ── Stage 3: Imagem final ─────────────────────────────────────────────────────
 FROM eclipse-temurin:17-jre-alpine
