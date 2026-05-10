@@ -20,10 +20,11 @@ magda-render/
     └── src/main/resources/
         ├── application.properties       ← dev local (H2)
         └── application-prod.properties  ← produção (PostgreSQL Render)
+```
 
 ## Desenvolvimento local (Windows)
 
-```powershell
+powershell
 # Terminal 1
 cd magda-render\backend
 mvn spring-boot:run
@@ -32,7 +33,7 @@ mvn spring-boot:run
 cd magda-render\frontend
 npm install
 npm run dev
-```
+
 http://localhost:5173
 
 ---
