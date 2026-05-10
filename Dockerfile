@@ -15,5 +15,4 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=backend-build /backend/target/fitness-api.jar app.jar
-ENV SPRING_PROFILES_ACTIVE=prod
-CMD ["java", "-jar", "app.jar"]
+CMD ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
