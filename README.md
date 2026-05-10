@@ -1,4 +1,4 @@
-# Avaliações Fitness — Deploy no Render
+# Avaliações Fitness — Deploy no Render (URL Público)
 
 ## Render?
 - Plano gratuito permanente (sem cartão de crédito obrigatório)
