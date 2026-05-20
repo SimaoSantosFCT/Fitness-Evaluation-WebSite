@@ -93,12 +93,18 @@ public class EvaluationService {
     }
 
     private void evaluateVisceralFat(ClientRequest c, EvaluationResult r) {
-        if (c.getVisceralFat() < 12) {
-            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível saudável (< 12)");
+        if (c.getVisceralFat() <= 4) {
+            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível saudável (1-4)");
             r.setVisceralFatStatus("healthy");
-        } else {
-            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível excessivo (≥ 12)");
+        } else if(c.getVisceralFat() >= 5 && c.getVisceralFat() <= 8){
+            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível Médio (5-8)");
+            r.setVisceralFatStatus("medium");
+        }else if(c.getVisceralFat() >= 9 && c.getVisceralFat() <= 12) {
+            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível Elevado (9-12)");
             r.setVisceralFatStatus("excessive");
+        } else if(c.getVisceralFat() >= 13 && c.getVisceralFat() <= 59) {
+            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível Alerta (13-59)");
+            r.setVisceralFatStatus("alert");
         }
     }
 
