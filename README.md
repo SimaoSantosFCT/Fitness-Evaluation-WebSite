@@ -1,8 +1,8 @@
-# Avaliações Fitness — Deploy no Render (URL Público)
+# Avaliações Fitness — Deploy no Render 
 
 ## Render?
 - Plano gratuito permanente (sem cartão de crédito obrigatório)
-- PostgreSQL gratuito incluído
+- PostgreSQL no SupaBase
 - Deploy automático a cada push para o GitHub
 - O único "custo" é que o servidor adormece após 15min sem uso
   → O primeiro acesso depois de inactivo demora ~30 segundos
