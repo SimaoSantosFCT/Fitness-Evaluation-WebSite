@@ -3,10 +3,6 @@ package com.magda.model;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 
-/**
- * Representa uma avaliação guardada na base de dados.
- * Cada linha = uma avaliação de um cliente numa data específica.
- */
 @Entity
 @Table(name = "evaluations")
 public class Evaluation {
@@ -15,13 +11,13 @@ public class Evaluation {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ── Identificação ────────────────────────────────────────────────────────
     private String clientName;
     private LocalDate evaluationDate;
     private int age;
     private String genre;
+    private String evaluationType; // "PRESENCIAL" | "ONLINE"
 
-    // ── Medidas ──────────────────────────────────────────────────────────────
+    // Presencial
     private double height;
     private double weight;
     private double fatMass;
@@ -32,13 +28,21 @@ public class Evaluation {
     private double basalMetabolism;
     private double metabolicAge;
     private int physicalLevel;
-
-    // ── Calculado ────────────────────────────────────────────────────────────
     private double imc;
+
+    // Online — medidas fita métrica
+    private double waist;
+    private double neck;
+    private double hip;
+    private double heightCm;
+
+    // Online — perímetros opcionais
+    private double chestPerimeter;
+    private double armPerimeter;
+    private double thighPerimeter;
 
     public Evaluation() {}
 
-    // ── Getters / Setters ────────────────────────────────────────────────────
     public Long getId()                         { return id; }
     public String getClientName()               { return clientName; }
     public void setClientName(String v)         { this.clientName = v; }
@@ -48,6 +52,8 @@ public class Evaluation {
     public void setAge(int v)                   { this.age = v; }
     public String getGenre()                    { return genre; }
     public void setGenre(String v)              { this.genre = v; }
+    public String getEvaluationType()           { return evaluationType; }
+    public void setEvaluationType(String v)     { this.evaluationType = v; }
     public double getHeight()                   { return height; }
     public void setHeight(double v)             { this.height = v; }
     public double getWeight()                   { return weight; }
@@ -70,4 +76,18 @@ public class Evaluation {
     public void setPhysicalLevel(int v)         { this.physicalLevel = v; }
     public double getImc()                      { return imc; }
     public void setImc(double v)                { this.imc = v; }
+    public double getWaist()                    { return waist; }
+    public void setWaist(double v)              { this.waist = v; }
+    public double getNeck()                     { return neck; }
+    public void setNeck(double v)               { this.neck = v; }
+    public double getHip()                      { return hip; }
+    public void setHip(double v)                { this.hip = v; }
+    public double getHeightCm()                 { return heightCm; }
+    public void setHeightCm(double v)           { this.heightCm = v; }
+    public double getChestPerimeter()           { return chestPerimeter; }
+    public void setChestPerimeter(double v)     { this.chestPerimeter = v; }
+    public double getArmPerimeter()             { return armPerimeter; }
+    public void setArmPerimeter(double v)       { this.armPerimeter = v; }
+    public double getThighPerimeter()           { return thighPerimeter; }
+    public void setThighPerimeter(double v)     { this.thighPerimeter = v; }
 }

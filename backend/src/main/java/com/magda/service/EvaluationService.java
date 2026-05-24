@@ -17,44 +17,122 @@ public class EvaluationService {
         this.repo = repo;
     }
 
-    /**
-     * Avalia, guarda na BD e retorna o resultado com o ID gerado.
-     */
     public EvaluationResult evaluateAndSave(ClientRequest c) {
-        // 1. Calcular avaliação
-        EvaluationResult result = evaluate(c);
+        boolean isOnline = "ONLINE".equalsIgnoreCase(c.getEvaluationType());
 
-        // 2. Persistir na BD
-        Evaluation entity = new Evaluation();
-        entity.setClientName(c.getName());
-        entity.setEvaluationDate(c.getEvaluationDate() != null ? c.getEvaluationDate() : LocalDate.now());
-        entity.setAge(c.getAge());
-        entity.setGenre(c.getGenre());
-        entity.setHeight(c.getHeight());
-        entity.setWeight(c.getPeso());
-        entity.setFatMass(c.getFatMass());
-        entity.setBoneMass(c.getBoneMass());
-        entity.setWater(c.getWater());
-        entity.setMuscleMass(c.getMuscleMass());
-        entity.setVisceralFat(c.getVisceralFat());
-        entity.setBasalMetabolism(c.getBasalMetabolism());
-        entity.setMetabolicAge(c.getMetabolicAge());
-        entity.setPhysicalLevel(c.getPhysicalLevel());
-        entity.setImc(Math.round(c.getIMC() * 10.0) / 10.0);
+        // Para avaliação online, calcular valores em falta antes de avaliar
+        if (isOnline) calculateOnlineMetrics(c);
 
+        EvaluationResult result = isOnline ? evaluateOnline(c) : evaluatePresencial(c);
+
+        // Guardar na BD
+        Evaluation entity = buildEntity(c, result);
         Evaluation saved = repo.save(entity);
         result.setSavedId(saved.getId());
         result.setEvaluationDate(saved.getEvaluationDate());
+        result.setEvaluationType(saved.getEvaluationType());
 
         return result;
     }
 
-    // ── Lógica de avaliação ──────────────────────────────────────────────────
+    // ── Cálculos Online (US Navy) ─────────────────────────────────────────────
 
-    private EvaluationResult evaluate(ClientRequest c) {
+    private void calculateOnlineMetrics(ClientRequest c) {
+        boolean female = c.getGenre().equalsIgnoreCase("F");
+        double h = c.getHeightCm();   // cm
+        double w = c.getWaist();
+        double n = c.getNeck();
+        double hip = c.getHip();
+
+        // % Gordura Corporal — Fórmula US Navy
+        double fatPct;
+        if (female) {
+            fatPct = 163.205 * Math.log10(w + hip - n) - 97.684 * Math.log10(h) - 78.387;
+        } else {
+            fatPct = 86.010 * Math.log10(w - n) - 70.041 * Math.log10(h) + 36.76;
+        }
+        fatPct = Math.max(3, Math.min(60, round1(fatPct)));
+        c.setFatMass(fatPct);
+
+        // Massa Gorda e Massa Magra
+        double fatKg  = round1(c.getPeso() * fatPct / 100.0);
+        double leanKg = round1(c.getPeso() - fatKg);
+        c.setMuscleMass(leanKg);
+
+        // TMB — Mifflin-St Jeor (altura em cm, peso em kg)
+        double tmb;
+        if (female) {
+            tmb = 10 * c.getPeso() + 6.25 * h - 5 * c.getAge() - 161;
+        } else {
+            tmb = 10 * c.getPeso() + 6.25 * h - 5 * c.getAge() + 5;
+        }
+        c.setBasalMetabolism(round1(tmb));
+
+        // Gordura visceral via WHtR
+        double whtr = w / h;
+        double visceralEstimate;
+        if (whtr < 0.50)       visceralEstimate = 3;
+        else if (whtr < 0.60)  visceralEstimate = 8;
+        else                   visceralEstimate = 14;
+        c.setVisceralFat(visceralEstimate);
+
+        // Idade metabólica estimada (TMB vs. média para a idade)
+        double avgTmb = female
+                ? 10 * 65 + 6.25 * h - 5 * c.getAge() - 161
+                : 10 * 75 + 6.25 * h - 5 * c.getAge() + 5;
+        double metAge = c.getAge() + (avgTmb - tmb) / 15.0;
+        c.setMetabolicAge(round1(Math.max(10, metAge)));
+
+        // Altura em metros para IMC
+        c.setHeight(h / 100.0);
+    }
+
+    // ── Avaliação Online ──────────────────────────────────────────────────────
+
+    private EvaluationResult evaluateOnline(ClientRequest c) {
         EvaluationResult r = new EvaluationResult();
+        r.setEvaluationType("ONLINE");
         r.setClientSummary(c.getName() + " | " + c.getAge() + " anos | " +
-                           c.getHeight() + " m | " + c.getPeso() + " kg");
+                c.getHeightCm() + " cm | " + c.getPeso() + " kg");
+
+        evaluateFatMass(c, r);
+        evaluateVisceralFat(c, r);
+        evaluateIMC(c, r);
+
+        // Cálculos derivados para mostrar nos resultados
+        double fatPct = c.getFatMass();
+        double fatKg  = round1(c.getPeso() * fatPct / 100.0);
+        double leanKg = round1(c.getPeso() - fatKg);
+        double whtr   = round2(c.getWaist() / c.getHeightCm());
+
+        r.setCalculatedFatMassPercent(fatPct);
+        r.setCalculatedFatMassKg(fatKg);
+        r.setCalculatedLeanMassKg(leanKg);
+        r.setCalculatedBasalMetabolism(c.getBasalMetabolism());
+        r.setWhtr(whtr);
+
+        String riskLabel;
+        if (whtr < 0.50)       riskLabel = "Baixo";
+        else if (whtr < 0.60)  riskLabel = "Moderado";
+        else                   riskLabel = "Elevado";
+        r.setVisceralRiskLabel(riskLabel);
+
+        r.setRemainingInformation(
+                "Massa Gorda: " + fatKg + " kg  |  " +
+                        "Massa Magra: " + leanKg + " kg  |  " +
+                        "IMB (Mifflin): " + c.getBasalMetabolism() + " Kcal  |  " +
+                        "Idade Metabólica estimada: " + c.getMetabolicAge() + " anos"
+        );
+        return r;
+    }
+
+    // ── Avaliação Presencial ──────────────────────────────────────────────────
+
+    private EvaluationResult evaluatePresencial(ClientRequest c) {
+        EvaluationResult r = new EvaluationResult();
+        r.setEvaluationType("PRESENCIAL");
+        r.setClientSummary(c.getName() + " | " + c.getAge() + " anos | " +
+                c.getHeight() + " m | " + c.getPeso() + " kg");
         evaluateFatMass(c, r);
         evaluateVisceralFat(c, r);
         evaluateIMC(c, r);
@@ -62,12 +140,50 @@ public class EvaluationService {
         evaluateBoneMass(c, r);
         evaluatePhysicalLevel(c, r);
         r.setRemainingInformation(
-            "Idade Metabólica: " + c.getMetabolicAge() +
-            " anos   |   Massa Muscular: " + c.getMuscleMass() +
-            " kg   |   IMB: " + c.getBasalMetabolism() + " Kcal"
+                "Idade Metabólica: " + c.getMetabolicAge() +
+                        " anos   |   Massa Muscular: " + c.getMuscleMass() +
+                        " kg   |   IMB: " + c.getBasalMetabolism() + " Kcal"
         );
         return r;
     }
+
+    // ── Entidade BD ───────────────────────────────────────────────────────────
+
+    private Evaluation buildEntity(ClientRequest c, EvaluationResult r) {
+        Evaluation e = new Evaluation();
+        e.setClientName(c.getName());
+        e.setEvaluationDate(c.getEvaluationDate() != null ? c.getEvaluationDate() : LocalDate.now());
+        e.setAge(c.getAge());
+        e.setGenre(c.getGenre());
+        e.setEvaluationType(r.getEvaluationType());
+        e.setWeight(c.getPeso());
+        e.setFatMass(c.getFatMass());
+        e.setMuscleMass(c.getMuscleMass());
+        e.setVisceralFat(c.getVisceralFat());
+        e.setBasalMetabolism(c.getBasalMetabolism());
+        e.setMetabolicAge(c.getMetabolicAge());
+        e.setImc(round1(c.getIMC()));
+
+        boolean isOnline = "ONLINE".equalsIgnoreCase(c.getEvaluationType());
+        if (isOnline) {
+            e.setHeightCm(c.getHeightCm());
+            e.setHeight(c.getHeightCm() / 100.0);
+            e.setWaist(c.getWaist());
+            e.setNeck(c.getNeck());
+            e.setHip(c.getHip());
+            e.setChestPerimeter(c.getChestPerimeter());
+            e.setArmPerimeter(c.getArmPerimeter());
+            e.setThighPerimeter(c.getThighPerimeter());
+        } else {
+            e.setHeight(c.getHeight());
+            e.setBoneMass(c.getBoneMass());
+            e.setWater(c.getWater());
+            e.setPhysicalLevel(c.getPhysicalLevel());
+        }
+        return e;
+    }
+
+    // ── Avaliações comuns ─────────────────────────────────────────────────────
 
     private void evaluateFatMass(ClientRequest c, EvaluationResult r) {
         boolean f = c.getGenre().equalsIgnoreCase("F");
@@ -93,23 +209,15 @@ public class EvaluationService {
     }
 
     private void evaluateVisceralFat(ClientRequest c, EvaluationResult r) {
-        if (c.getVisceralFat() <= 4) {
-            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível saudável (1-4)");
-            r.setVisceralFatStatus("healthy");
-        } else if(c.getVisceralFat() >= 5 && c.getVisceralFat() <= 8){
-            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível Médio (5-8)");
-            r.setVisceralFatStatus("medium");
-        }else if(c.getVisceralFat() >= 9 && c.getVisceralFat() <= 12) {
-            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível Elevado (9-12)");
-            r.setVisceralFatStatus("excessive");
-        } else if(c.getVisceralFat() >= 13 && c.getVisceralFat() <= 59) {
-            r.setVisceralFatEvaluation(c.getVisceralFat() + " — Nível Alerta (13-59)");
-            r.setVisceralFatStatus("alert");
-        }
+        double vf = c.getVisceralFat();
+        if      (vf <= 4)  { r.setVisceralFatEvaluation(vf + " — Nível saudável (1–4)");   r.setVisceralFatStatus("healthy"); }
+        else if (vf <= 8)  { r.setVisceralFatEvaluation(vf + " — Nível médio (5–8)");      r.setVisceralFatStatus("medium"); }
+        else if (vf <= 12) { r.setVisceralFatEvaluation(vf + " — Nível elevado (9–12)");   r.setVisceralFatStatus("excessive"); }
+        else               { r.setVisceralFatEvaluation(vf + " — Nível alerta (13–59)");   r.setVisceralFatStatus("alert"); }
     }
 
     private void evaluateIMC(ClientRequest c, EvaluationResult r) {
-        double imc = Math.round(c.getIMC() * 10.0) / 10.0;
+        double imc = round1(c.getIMC());
         r.setImcValue(imc);
         String cat, status;
         if      (imc < 18.5) { cat = "Abaixo do peso";   status = "underweight"; }
@@ -167,4 +275,7 @@ public class EvaluationService {
             default -> "Nível desconhecido";
         });
     }
+
+    private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
+    private double round2(double v) { return Math.round(v * 100.0) / 100.0; }
 }

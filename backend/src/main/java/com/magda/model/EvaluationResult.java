@@ -6,7 +6,9 @@ public class EvaluationResult {
     private Long savedId;
     private String clientSummary;
     private LocalDate evaluationDate;
+    private String evaluationType;
 
+    // Resultados avaliação
     private String fatMassEvaluation;
     private String fatMassStatus;
     private String visceralFatEvaluation;
@@ -20,12 +22,22 @@ public class EvaluationResult {
     private String physicalLevelEvaluation;
     private String remainingInformation;
 
+    // Calculados Online (US Navy)
+    private double calculatedFatMassPercent;
+    private double calculatedFatMassKg;
+    private double calculatedLeanMassKg;
+    private double calculatedBasalMetabolism;
+    private String visceralRiskLabel;   // "baixo" | "moderado" | "elevado"
+    private double whtr;                // waist-to-height ratio
+
     public Long getSavedId()                            { return savedId; }
     public void setSavedId(Long v)                      { this.savedId = v; }
     public String getClientSummary()                    { return clientSummary; }
     public void setClientSummary(String v)              { this.clientSummary = v; }
     public LocalDate getEvaluationDate()                { return evaluationDate; }
     public void setEvaluationDate(LocalDate v)          { this.evaluationDate = v; }
+    public String getEvaluationType()                   { return evaluationType; }
+    public void setEvaluationType(String v)             { this.evaluationType = v; }
     public String getFatMassEvaluation()                { return fatMassEvaluation; }
     public void setFatMassEvaluation(String v)          { this.fatMassEvaluation = v; }
     public String getFatMassStatus()                    { return fatMassStatus; }
@@ -50,4 +62,16 @@ public class EvaluationResult {
     public void setPhysicalLevelEvaluation(String v)    { this.physicalLevelEvaluation = v; }
     public String getRemainingInformation()             { return remainingInformation; }
     public void setRemainingInformation(String v)       { this.remainingInformation = v; }
+    public double getCalculatedFatMassPercent()         { return calculatedFatMassPercent; }
+    public void setCalculatedFatMassPercent(double v)   { this.calculatedFatMassPercent = v; }
+    public double getCalculatedFatMassKg()              { return calculatedFatMassKg; }
+    public void setCalculatedFatMassKg(double v)        { this.calculatedFatMassKg = v; }
+    public double getCalculatedLeanMassKg()             { return calculatedLeanMassKg; }
+    public void setCalculatedLeanMassKg(double v)       { this.calculatedLeanMassKg = v; }
+    public double getCalculatedBasalMetabolism()        { return calculatedBasalMetabolism; }
+    public void setCalculatedBasalMetabolism(double v)  { this.calculatedBasalMetabolism = v; }
+    public String getVisceralRiskLabel()                { return visceralRiskLabel; }
+    public void setVisceralRiskLabel(String v)          { this.visceralRiskLabel = v; }
+    public double getWhtr()                             { return whtr; }
+    public void setWhtr(double v)                       { this.whtr = v; }
 }
