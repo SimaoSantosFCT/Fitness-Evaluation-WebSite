@@ -6,11 +6,9 @@ public class ClientRequest {
     private String name;
     private int age;
     private String genre;
-    private String evaluationType; // "PRESENCIAL" | "ONLINE"
+    private String evaluationType;
     private LocalDate evaluationDate;
-
-    // ── Presencial ───────────────────────────────────────────────────────────
-    private double height;   // metros
+    private double height;
     private double peso;
     private double fatMass;
     private double boneMass;
@@ -20,17 +18,16 @@ public class ClientRequest {
     private double basalMetabolism;
     private double metabolicAge;
     private double visceralFat;
-
-    // ── Online ───────────────────────────────────────────────────────────────
-    private double heightCm;  // cm para fórmulas US Navy
+    private double heightCm;
     private double waist;
     private double neck;
     private double hip;
     private double chestPerimeter;
     private double armPerimeter;
     private double thighPerimeter;
+    private String bodyFrame;
+    private String activityLevel;
 
-    // ── Getters / Setters ────────────────────────────────────────────────────
     public String getName()                     { return name; }
     public void setName(String v)               { this.name = v; }
     public int getAge()                         { return age; }
@@ -75,6 +72,10 @@ public class ClientRequest {
     public void setArmPerimeter(double v)       { this.armPerimeter = v; }
     public double getThighPerimeter()           { return thighPerimeter; }
     public void setThighPerimeter(double v)     { this.thighPerimeter = v; }
+    public String getBodyFrame()                { return bodyFrame; }
+    public void setBodyFrame(String v)          { this.bodyFrame = v; }
+    public String getActivityLevel()            { return activityLevel; }
+    public void setActivityLevel(String v)      { this.activityLevel = v; }
 
     public double getIMC() {
         if (height > 0 && peso > 0) return peso / (height * height);

@@ -19,32 +19,30 @@ public class EvaluationService {
 
     public EvaluationResult evaluateAndSave(ClientRequest c) {
         boolean isOnline = "ONLINE".equalsIgnoreCase(c.getEvaluationType());
-
-        // Para avaliação online, calcular valores em falta antes de avaliar
         if (isOnline) calculateOnlineMetrics(c);
 
         EvaluationResult result = isOnline ? evaluateOnline(c) : evaluatePresencial(c);
 
-        // Guardar na BD
         Evaluation entity = buildEntity(c, result);
         Evaluation saved = repo.save(entity);
         result.setSavedId(saved.getId());
         result.setEvaluationDate(saved.getEvaluationDate());
         result.setEvaluationType(saved.getEvaluationType());
-
         return result;
     }
 
-    // ── Cálculos Online (US Navy) ─────────────────────────────────────────────
+    // ── Cálculos Online ───────────────────────────────────────────────────────
 
     private void calculateOnlineMetrics(ClientRequest c) {
         boolean female = c.getGenre().equalsIgnoreCase("F");
-        double h = c.getHeightCm();   // cm
-        double w = c.getWaist();
-        double n = c.getNeck();
+        double h   = c.getHeightCm();
+        double w   = c.getWaist();
+        double n   = c.getNeck();
         double hip = c.getHip();
+        double peso = c.getPeso();
+        int    age  = c.getAge();
 
-        // % Gordura Corporal — Fórmula US Navy
+        // ── % Gordura — US Navy ──────────────────────────────────────────────
         double fatPct;
         if (female) {
             fatPct = 163.205 * Math.log10(w + hip - n) - 97.684 * Math.log10(h) - 78.387;
@@ -54,40 +52,45 @@ public class EvaluationService {
         fatPct = Math.max(3, Math.min(60, round1(fatPct)));
         c.setFatMass(fatPct);
 
-        // Massa Gorda e Massa Magra
-        double fatKg  = round1(c.getPeso() * fatPct / 100.0);
-        double leanKg = round1(c.getPeso() - fatKg);
+        // ── Massas ────────────────────────────────────────────────────────────
+        double fatKg  = round1(peso * fatPct / 100.0);
+        double leanKg = round1(peso - fatKg);
         c.setMuscleMass(leanKg);
 
-        // TMB — Mifflin-St Jeor (altura em cm, peso em kg)
-        double tmb;
-        if (female) {
-            tmb = 10 * c.getPeso() + 6.25 * h - 5 * c.getAge() - 161;
-        } else {
-            tmb = 10 * c.getPeso() + 6.25 * h - 5 * c.getAge() + 5;
-        }
-        c.setBasalMetabolism(round1(tmb));
+        // ── TMB — Mifflin-St Jeor ─────────────────────────────────────────────
+        double tmb = female
+                ? 10 * peso + 6.25 * h - 5 * age - 161
+                : 10 * peso + 6.25 * h - 5 * age + 5;
+        tmb = round1(tmb);
+        c.setBasalMetabolism(tmb);
 
-        // Gordura visceral via WHtR
+        // ── TDEE — factor de actividade ───────────────────────────────────────
+        String al = c.getActivityLevel() != null ? c.getActivityLevel() : "SEDENTARIO";
+        double factor = switch (al) {
+            case "LEVEMENTE_ATIVO"       -> 1.375;
+            case "MODERADAMENTE_ATIVO"   -> 1.55;
+            case "MUITO_ATIVO"           -> 1.725;
+            case "SUPER_ATIVO"           -> 1.9;
+            default                      -> 1.2; // SEDENTARIO
+        };
+        c.setMetabolicAge(round1(tmb * factor)); // reutilizamos metabolicAge para TDEE temporariamente
+
+        // ── Gordura visceral (WHtR) ───────────────────────────────────────────
         double whtr = w / h;
-        double visceralEstimate;
-        if (whtr < 0.50)       visceralEstimate = 3;
-        else if (whtr < 0.60)  visceralEstimate = 8;
-        else                   visceralEstimate = 14;
-        c.setVisceralFat(visceralEstimate);
+        c.setVisceralFat(whtr < 0.50 ? 3 : whtr < 0.60 ? 8 : 14);
 
-        // Idade metabólica estimada (TMB vs. média para a idade)
-        double avgTmb = female
-                ? 10 * 65 + 6.25 * h - 5 * c.getAge() - 161
-                : 10 * 75 + 6.25 * h - 5 * c.getAge() + 5;
-        double metAge = c.getAge() + (avgTmb - tmb) / 15.0;
-        c.setMetabolicAge(round1(Math.max(10, metAge)));
+        // ── Água corporal — Watson ────────────────────────────────────────────
+        double waterL = female
+                ? -2.097 + 0.1069 * h + 0.2466 * peso
+                : 2.447 - 0.09156 * age + 0.1074 * h + 0.3362 * peso;
+        double waterPct = round1((waterL / peso) * 100.0);
+        c.setWater(waterPct);
 
-        // Altura em metros para IMC
+        // ── Altura em metros para IMC ─────────────────────────────────────────
         c.setHeight(h / 100.0);
     }
 
-    // ── Avaliação Online ──────────────────────────────────────────────────────
+    // ── Resultado Online ──────────────────────────────────────────────────────
 
     private EvaluationResult evaluateOnline(ClientRequest c) {
         EvaluationResult r = new EvaluationResult();
@@ -99,34 +102,108 @@ public class EvaluationService {
         evaluateVisceralFat(c, r);
         evaluateIMC(c, r);
 
-        // Cálculos derivados para mostrar nos resultados
-        double fatPct = c.getFatMass();
-        double fatKg  = round1(c.getPeso() * fatPct / 100.0);
-        double leanKg = round1(c.getPeso() - fatKg);
-        double whtr   = round2(c.getWaist() / c.getHeightCm());
+        boolean female = c.getGenre().equalsIgnoreCase("F");
+        double peso    = c.getPeso();
+        double fatPct  = c.getFatMass();
+        double fatKg   = round1(peso * fatPct / 100.0);
+        double leanKg  = round1(peso - fatKg);
+        double tmb     = c.getBasalMetabolism();
+        double tdee    = c.getMetabolicAge(); // TDEE guardado aqui temporariamente
+        double whtr    = round2(c.getWaist() / c.getHeightCm());
+        double waterPct = c.getWater();
+
+        // Peso ideal — Devine ajustado pelo tipo de corpo
+        String frame    = c.getBodyFrame() != null ? c.getBodyFrame() : "NORMAL";
+        double frameAdj = frame.equals("PEQUENO") ? -0.1 : frame.equals("GRANDE") ? 0.1 : 0.0;
+        double idealBase = female
+                ? 45.5 + 2.3 * ((c.getHeightCm() - 152.4) / 2.54)
+                : 50.0 + 2.3 * ((c.getHeightCm() - 152.4) / 2.54);
+        double idealWeight    = round1(idealBase * (1 + frameAdj));
+        double idealWeightMin = round1(idealWeight * 0.95);
+        double idealWeightMax = round1(idealWeight * 1.15);
+
+        // Idade metabólica estimada
+        double avgTmb = female
+                ? 10 * 65 + 6.25 * c.getHeightCm() - 5 * c.getAge() - 161
+                : 10 * 75 + 6.25 * c.getHeightCm() - 5 * c.getAge() + 5;
+        double metAge = round1(Math.max(10, c.getAge() + (avgTmb - tmb) / 15.0));
+
+        // Zona de água
+        String waterZone;
+        if (female) {
+            waterZone = waterPct < 45 ? "baixo" : waterPct < 50 ? "saudavel" : waterPct < 60 ? "alto" : "muito_alto";
+        } else {
+            waterZone = waterPct < 50 ? "baixo" : waterPct < 55 ? "saudavel" : waterPct < 65 ? "alto" : "muito_alto";
+        }
+
+        // Zona % gordura
+        String fatZone;
+        if (female) {
+            int age = c.getAge();
+            double[] refs = age <= 39 ? new double[]{21, 32.9, 38.9} : age <= 59 ? new double[]{23, 33.9, 39.9} : new double[]{24, 35.9, 41.9};
+            fatZone = fatPct < refs[0] ? "baixo" : fatPct <= refs[1] ? "bom" : fatPct <= refs[2] ? "normal" : "elevado";
+        } else {
+            int age = c.getAge();
+            double[] refs = age <= 39 ? new double[]{8, 19.9, 24.9} : age <= 59 ? new double[]{11, 21.9, 27.9} : new double[]{13, 24.9, 29.9};
+            fatZone = fatPct < refs[0] ? "baixo" : fatPct <= refs[1] ? "bom" : fatPct <= refs[2] ? "normal" : "elevado";
+        }
+
+        // Zona massa muscular (% do peso)
+        double musclePct = (leanKg / peso) * 100.0;
+        String muscleZone;
+        if (female) {
+            muscleZone = musclePct < 24 ? "baixo" : musclePct < 30 ? "saudavel" : musclePct < 35 ? "bom" : "excelente";
+        } else {
+            muscleZone = musclePct < 33 ? "baixo" : musclePct < 39 ? "saudavel" : musclePct < 44 ? "bom" : "excelente";
+        }
+
+        // Labels actividade e tipo de corpo
+        String al = c.getActivityLevel() != null ? c.getActivityLevel() : "SEDENTARIO";
+        String actLabel = switch (al) {
+            case "LEVEMENTE_ATIVO"     -> "Levemente Ativo";
+            case "MODERADAMENTE_ATIVO" -> "Moderadamente Ativo";
+            case "MUITO_ATIVO"         -> "Muito Ativo";
+            case "SUPER_ATIVO"         -> "Super Ativo";
+            default                    -> "Sedentário";
+        };
+        String frameLabel = switch (frame) {
+            case "PEQUENO" -> "Pequeno";
+            case "GRANDE"  -> "Grande";
+            default        -> "Normal";
+        };
+
+        // Risco visceral
+        String riskLabel = whtr < 0.50 ? "Baixo" : whtr < 0.60 ? "Moderado" : "Elevado";
 
         r.setCalculatedFatMassPercent(fatPct);
         r.setCalculatedFatMassKg(fatKg);
         r.setCalculatedLeanMassKg(leanKg);
-        r.setCalculatedBasalMetabolism(c.getBasalMetabolism());
+        r.setCalculatedBasalMetabolism(tmb);
+        r.setCalculatedTDEE(round1(tdee));
+        r.setCalculatedWaterPercent(waterPct);
+        r.setCalculatedIdealWeight(idealWeight);
+        r.setCalculatedIdealWeightMin(idealWeightMin);
+        r.setCalculatedIdealWeightMax(idealWeightMax);
+        r.setCalculatedMetabolicAge(metAge);
         r.setWhtr(whtr);
-
-        String riskLabel;
-        if (whtr < 0.50)       riskLabel = "Baixo";
-        else if (whtr < 0.60)  riskLabel = "Moderado";
-        else                   riskLabel = "Elevado";
         r.setVisceralRiskLabel(riskLabel);
+        r.setActivityLevelLabel(actLabel);
+        r.setBodyFrameLabel(frameLabel);
+        r.setWaterZone(waterZone);
+        r.setFatMassZone(fatZone);
+        r.setMuscleMassZone(muscleZone);
 
         r.setRemainingInformation(
                 "Massa Gorda: " + fatKg + " kg  |  " +
                         "Massa Magra: " + leanKg + " kg  |  " +
-                        "IMB (Mifflin): " + c.getBasalMetabolism() + " Kcal  |  " +
-                        "Idade Metabólica estimada: " + c.getMetabolicAge() + " anos"
+                        "IMB: " + tmb + " Kcal  |  " +
+                        "TDEE: " + round1(tdee) + " Kcal  |  " +
+                        "Idade Metabólica: " + metAge + " anos"
         );
         return r;
     }
 
-    // ── Avaliação Presencial ──────────────────────────────────────────────────
+    // ── Resultado Presencial ──────────────────────────────────────────────────
 
     private EvaluationResult evaluatePresencial(ClientRequest c) {
         EvaluationResult r = new EvaluationResult();
@@ -174,6 +251,7 @@ public class EvaluationService {
             e.setChestPerimeter(c.getChestPerimeter());
             e.setArmPerimeter(c.getArmPerimeter());
             e.setThighPerimeter(c.getThighPerimeter());
+            e.setWater(c.getWater());
         } else {
             e.setHeight(c.getHeight());
             e.setBoneMass(c.getBoneMass());
@@ -190,7 +268,6 @@ public class EvaluationService {
         int age = c.getAge();
         double fat = c.getFatMass();
         double low, normalMax, highMax;
-
         if (f) {
             if (age <= 39)      { low = 20.9; normalMax = 32.9; highMax = 38.9; }
             else if (age <= 59) { low = 22.9; normalMax = 33.9; highMax = 39.9; }
@@ -200,7 +277,6 @@ public class EvaluationService {
             else if (age <= 59) { low = 10.9; normalMax = 21.9; highMax = 27.9; }
             else                { low = 12.9; normalMax = 24.9; highMax = 29.9; }
         }
-
         String range = (low + 0.1) + "% a " + normalMax + "%";
         if      (fat <= low)       { r.setFatMassEvaluation(fat + "% — Baixa (normal: " + range + ")");          r.setFatMassStatus("low"); }
         else if (fat <= normalMax) { r.setFatMassEvaluation(fat + "% — Normal");                                  r.setFatMassStatus("normal"); }
@@ -213,7 +289,7 @@ public class EvaluationService {
         if      (vf <= 4)  { r.setVisceralFatEvaluation(vf + " — Nível saudável (1–4)");   r.setVisceralFatStatus("healthy"); }
         else if (vf <= 8)  { r.setVisceralFatEvaluation(vf + " — Nível médio (5–8)");      r.setVisceralFatStatus("medium"); }
         else if (vf <= 12) { r.setVisceralFatEvaluation(vf + " — Nível elevado (9–12)");   r.setVisceralFatStatus("excessive"); }
-        else               { r.setVisceralFatEvaluation(vf + " — Nível alerta (13–59)");   r.setVisceralFatStatus("alert"); }
+        else               { r.setVisceralFatEvaluation(vf + " — Nível alerta (> 12)");    r.setVisceralFatStatus("alert"); }
     }
 
     private void evaluateIMC(ClientRequest c, EvaluationResult r) {
@@ -226,29 +302,17 @@ public class EvaluationService {
         else if (imc < 34.9) { cat = "Obesidade grau 1"; status = "obese1"; }
         else if (imc < 39.9) { cat = "Obesidade grau 2"; status = "obese2"; }
         else                  { cat = "Obesidade grau 3"; status = "obese3"; }
-        r.setImcEvaluation(imc + " — " + cat + ". " + imcDescription(cat));
+        r.setImcEvaluation(imc + " — " + cat);
         r.setImcStatus(status);
-    }
-
-    private String imcDescription(String cat) {
-        return switch (cat) {
-            case "Abaixo do peso"   -> "Risco de défices nutricionais e fadiga.";
-            case "Peso normal"      -> "Associado a boa vitalidade e condição física.";
-            case "Sobrepeso"        -> "Pode causar fadiga e problemas cardiovasculares.";
-            case "Obesidade grau 1" -> "Risco de diabetes, hipertensão e articulações.";
-            case "Obesidade grau 2" -> "Risco elevado cardiovascular, diabetes e cancro.";
-            case "Obesidade grau 3" -> "Risco muito elevado. Acompanhamento médico urgente.";
-            default -> "";
-        };
     }
 
     private void evaluateWater(ClientRequest c, EvaluationResult r) {
         boolean f = c.getGenre().equalsIgnoreCase("F");
         double min = f ? 45 : 50, max = f ? 60 : 65, w = c.getWater();
-        String g = f ? "mulheres" : "homens", range = min + "–" + max + "% para " + g;
-        if      (w < min) { r.setWaterEvaluation(w + "% — Abaixo do normal (" + range + ")"); r.setWaterStatus("low"); }
-        else if (w > max) { r.setWaterEvaluation(w + "% — Acima do normal (" + range + ")");  r.setWaterStatus("high"); }
-        else              { r.setWaterEvaluation(w + "% — Normal (" + range + ")");            r.setWaterStatus("normal"); }
+        String g = f ? "mulheres" : "homens";
+        if      (w < min) { r.setWaterEvaluation(w + "% — Abaixo do normal (" + min + "–" + max + "% para " + g + ")"); r.setWaterStatus("low"); }
+        else if (w > max) { r.setWaterEvaluation(w + "% — Acima do normal (" + min + "–" + max + "% para " + g + ")");  r.setWaterStatus("high"); }
+        else              { r.setWaterEvaluation(w + "% — Normal (" + min + "–" + max + "% para " + g + ")");            r.setWaterStatus("normal"); }
     }
 
     private void evaluateBoneMass(ClientRequest c, EvaluationResult r) {
